@@ -213,16 +213,16 @@ const PostRow = React.memo(function PostRow({
   const style = author ? officialStyleFor(author.handle) : undefined;
   const isEcoForge = !!style?.isEcoForge;
 
-  const [showComments, setShowComments] = useState<boolean>(false);
   const [draft, setDraft] = useState<string>("");
+  const showComments = false;
 
   const openAuthor = useCallback(() => {
-    if (isEcoForge) router.push("/ecoforge");
+    if (isEcoForge) router.push("/ecoforge" as any);
     else if (author) router.push(`/profile/${author.id}`);
   }, [isEcoForge, author]);
 
   const openPost = useCallback(() => {
-    router.push(`/post/${post.id}`);
+    router.push(`/post/${post.id}` as any);
   }, [post.id]);
 
   // Community posts can be flagged & hidden; official posts can't be flagged.

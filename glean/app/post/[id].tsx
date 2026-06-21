@@ -74,7 +74,7 @@ export default function PostDetailScreen() {
   const saved = savedPostIds.includes(post.id);
 
   const openAuthor = () => {
-    if (isEcoForge) router.push("/ecoforge");
+    if (isEcoForge) router.push("/ecoforge" as any);
     else if (author) router.push(`/profile/${author.id}`);
   };
 

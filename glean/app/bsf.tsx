@@ -89,7 +89,7 @@ export default function BsfScreen() {
               protein-rich animal feed and a natural fertiliser called frass.
             </Text>
             <Text style={styles.para}>
-              It's one of the fastest, lowest-cost ways to close the organic
+              It&apos;s one of the fastest, lowest-cost ways to close the organic
               loop — diverting waste from dumpsites while creating feed and
               fertiliser that local farmers actually pay for.
             </Text>
