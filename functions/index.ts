@@ -216,11 +216,11 @@ const routes: Record<string, Handler> = {
   },
 
   "/drives.create": async (body, { rest, user }) => {
-    // RBAC check: only users with the 'anchor' role can create collection drives.
-    const profiles = await rest.select<{ role: string }>("profiles", `id=eq.${encodeFilterValue(user.id)}&select=role`);
-    const role = profiles[0]?.role;
-    if (role !== "anchor") {
-      throw new HttpError(403, "Only bulk buyers and collection anchors can create drives.");
+    // Hardened RBAC check: only users with the 'anchor' role AND a verified flag can create collection drives.
+    const profiles = await rest.select<{ role: string; verified: boolean }>("profiles", `id=eq.${encodeFilterValue(user.id)}&select=role,verified`);
+    const profile = profiles[0];
+    if (!profile || profile.role !== "anchor" || !profile.verified) {
+      throw new HttpError(403, "Only verified bulk buyers and collection anchors can create drives.");
     }
 
     const row = {
@@ -249,6 +249,24 @@ const routes: Record<string, Handler> = {
       "drive_id,user_id",
     );
     return { ok: true };
+  },
+
+  "/drives.confirmCommitment": async (body, { rest, user }) => {
+    const driveId = str(body.driveId, "Drive");
+    const targetUserId = str(body.userId, "User");
+    
+    // Verify the caller is the organizer of the drive.
+    const drives = await rest.select<{ organizer_id: string }>("drives", `id=eq.${encodeFilterValue(driveId)}&select=organizer_id`);
+    if (!drives[0] || drives[0].organizer_id !== user.id) {
+      throw new HttpError(403, "Only the drive organizer can confirm commitments.");
+    }
+
+    await rest.update(
+      "drive_commitments",
+      `drive_id=eq.${encodeFilterValue(driveId)}&user_id=eq.${encodeFilterValue(targetUserId)}`,
+      { confirmed: true }
+    );
+    return { confirmed: true };
   },
 
   "/drives.uncommit": async (body, { rest, user }) => {
