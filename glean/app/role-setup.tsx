@@ -1,14 +1,24 @@
 import { router } from "expo-router";
-import { Check } from "lucide-react-native";
+import { Camera, Check } from "lucide-react-native";
 import React, { useState } from "react";
-import { Alert, ScrollView, StyleSheet, View } from "react-native";
+import {
+  ActivityIndicator,
+  Alert,
+  KeyboardAvoidingView,
+  Platform,
+  ScrollView,
+  StyleSheet,
+  View,
+} from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-import { Button, PressableScale, Text, haptic } from "@/components/ui";
+import { Avatar, Button, Input, Label, PressableScale, Text, haptic } from "@/components/ui";
+import { useMediaPicker } from "@/components/media-picker";
 import { EcoImage } from "@/components/illustrations";
 import Colors from "@/constants/colors";
 import { Fonts } from "@/constants/fonts";
 import { ROLES } from "@/constants/roles";
+import { uploadMedia } from "@/lib/upload";
 import { useApp } from "@/providers/AppProvider";
 import type { UserRole } from "@/types";
 
@@ -25,23 +35,56 @@ const ORDER: UserRole[] = ["collector", "maker", "processor", "farmer", "anchor"
 export default function RoleSetupScreen() {
   const insets = useSafeAreaInsets();
   const { me, updateMe, completeRolePick } = useApp();
-  const [role, setRole] = useState<UserRole>(me?.role ?? "collector");
-  const [saving, setSaving] = useState<boolean>(false);
+  const { pick, element: mediaSheet } = useMediaPicker();
 
-  const save = async () => {
+  const [role, setRole] = useState<UserRole>(me?.role ?? "collector");
+  const [trade, setTrade] = useState<string>(me?.trade ?? "");
+  const [bio, setBio] = useState<string>(me?.bio ?? "");
+  const [avatar, setAvatar] = useState<string | undefined>(me?.avatar);
+  const [uploading, setUploading] = useState<boolean>(false);
+  const [saving, setSaving] = useState<boolean>(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const pickAvatar = async () => {
+    const asset = await pick({ mediaTypes: "images", allowsEditing: true, aspect: [1, 1] });
+    if (!asset) return;
+    setError(null);
+    setUploading(true);
+    try {
+      const url = await uploadMedia(asset, "avatars");
+      setAvatar(url);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Couldn't upload photo.");
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  const save = async (bypass = false) => {
     if (saving) return;
     setSaving(true);
+    setError(null);
     try {
-      await updateMe({ role });
+      // If bypassing, we can default role to collector (or leave as is) and not send custom bio/trade
+      const payload = bypass
+        ? { role: "collector" as UserRole }
+        : {
+            role,
+            trade: trade.trim(),
+            bio: bio.trim(),
+            ...(avatar ? { avatar } : {}),
+          };
+
+      await updateMe(payload);
       haptic("success");
       completeRolePick();
       router.replace("/(tabs)");
-    } catch {
+    } catch (e) {
       haptic("medium");
       setSaving(false);
       Alert.alert(
         "Connection Issue",
-        "We couldn't save your profile role selection. Would you like to try again or configure it in settings later?",
+        "We couldn't save your profile setup. Would you like to try again or configure it in settings later?",
         [
           { text: "Retry", style: "cancel" },
           {
@@ -57,17 +100,52 @@ export default function RoleSetupScreen() {
   };
 
   return (
-    <View style={styles.container}>
+    <KeyboardAvoidingView
+      style={styles.container}
+      behavior={Platform.OS === "ios" ? "padding" : undefined}
+    >
       <ScrollView
         contentContainerStyle={[styles.content, { paddingTop: insets.top + 24 }]}
         showsVerticalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled"
       >
-        <Text style={styles.kicker}>WELCOME TO GLEAN</Text>
-        <Text style={styles.title}>What best describes you?</Text>
+        <View style={styles.headerRow}>
+          <View style={styles.headerLeft}>
+            <Text style={styles.kicker}>WELCOME TO GLEAN</Text>
+            <Text style={styles.title}>Set up your profile</Text>
+          </View>
+          <PressableScale onPress={() => save(true)} style={styles.skipBtn}>
+            <Text style={styles.skipText}>Skip</Text>
+          </PressableScale>
+        </View>
+
         <Text style={styles.sub}>
-          This shapes your profile and how your impact is counted. You can change it anytime.
+          Customize how you appear in the community. You can update these details anytime.
         </Text>
 
+        <View style={styles.avatarRow}>
+          <PressableScale onPress={pickAvatar} disabled={uploading}>
+            <Avatar uri={avatar ?? me?.avatar ?? ""} size={84} />
+            <View style={styles.avatarBadge}>
+              {uploading ? (
+                <ActivityIndicator color={Colors.white} size="small" />
+              ) : (
+                <Camera color={Colors.white} size={14} />
+              )}
+            </View>
+          </PressableScale>
+          <Text style={styles.avatarHint}>Tap to upload a profile photo</Text>
+        </View>
+
+        <Label text="Bio" />
+        <Input
+          value={bio}
+          onChangeText={setBio}
+          placeholder="Tell the community about yourself, your goals, or your project..."
+          textarea
+        />
+
+        <Label text="What best describes your role?" />
         <View style={styles.list}>
           {ORDER.map((key) => {
             const r = ROLES[key];
@@ -92,18 +170,34 @@ export default function RoleSetupScreen() {
             );
           })}
         </View>
+
+        <Label text="Trade (Optional)" />
+        <Input
+          value={trade}
+          onChangeText={setTrade}
+          placeholder="e.g. PET collector, organic compost, etc."
+        />
+
+        {error ? <Text style={styles.error}>{error}</Text> : null}
       </ScrollView>
 
-        <View style={[styles.footer, { paddingBottom: insets.bottom + 12 }]}>
-          <Button label="Continue" onPress={save} loading={saving} fullWidth />
-        </View>
-    </View>
+      <View style={[styles.footer, { paddingBottom: insets.bottom + 12 }]}>
+        <Button label="Save & Continue" onPress={() => save(false)} loading={saving} fullWidth />
+      </View>
+      {mediaSheet}
+    </KeyboardAvoidingView>
   );
 }
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: Colors.paper },
   content: { padding: 20, paddingBottom: 40 },
+  headerRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+  },
+  headerLeft: { flex: 1 },
   kicker: {
     fontFamily: Fonts.monoBold,
     fontSize: 11,
@@ -116,14 +210,49 @@ const styles = StyleSheet.create({
     color: Colors.charcoal,
     marginTop: 8,
   },
+  skipBtn: {
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 20,
+    backgroundColor: Colors.cardAlt,
+  },
+  skipText: {
+    fontFamily: Fonts.sansSemibold,
+    fontSize: 13,
+    color: Colors.slate,
+  },
   sub: {
     fontFamily: Fonts.sans,
     fontSize: 14.5,
     color: Colors.slate,
     lineHeight: 21,
     marginTop: 8,
+    marginBottom: 20,
   },
-  list: { gap: 12, marginTop: 22 },
+  avatarRow: {
+    alignItems: "center",
+    marginBottom: 20,
+    gap: 8,
+  },
+  avatarBadge: {
+    position: "absolute",
+    bottom: 0,
+    right: 0,
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: Colors.sky,
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: 2,
+    borderColor: Colors.paper,
+  },
+  avatarHint: {
+    fontFamily: Fonts.sansMedium,
+    fontSize: 12.5,
+    color: Colors.slate,
+  },
+  list: { gap: 12, marginTop: 10, marginBottom: 20 },
   roleCard: {
     flexDirection: "row",
     alignItems: "center",
@@ -152,6 +281,13 @@ const styles = StyleSheet.create({
     borderRadius: 13,
     alignItems: "center",
     justifyContent: "center",
+  },
+  error: {
+    fontFamily: Fonts.sansMedium,
+    fontSize: 13.5,
+    color: Colors.danger,
+    marginTop: 14,
+    lineHeight: 19,
   },
   footer: {
     paddingHorizontal: 20,
@@ -186,3 +322,4 @@ function getRoleLabelStyle(color: string, active: boolean) {
 function getCheckStyle(color: string) {
   return [styles.check, { backgroundColor: color }];
 }
+

@@ -56,10 +56,41 @@ const headerStyle = {
   headerBackTitle: "Back",
 } as const;
 
+import { supabase } from "@/lib/supabase";
+import * as Linking from "expo-linking";
+
 function NavigationGate() {
   const { onboarded, rolePicked, me } = useApp();
   const { isAuthenticated, initializing } = useAuth();
   const pathname = usePathname();
+
+  // Listen for incoming deep links (email confirmation URLs or OAuth redirects)
+  useEffect(() => {
+    const handleDeepLink = async (event: { url: string }) => {
+      try {
+        const url = event.url;
+        const parsed = Linking.parse(url);
+        // If code query parameter is present (auth code flow)
+        const code = parsed.queryParams?.code as string | undefined;
+        if (code) {
+          const { error } = await supabase.auth.exchangeCodeForSession(code);
+          if (error) console.error("Error exchanging code for session:", error.message);
+        }
+      } catch (err) {
+        console.error("Failed to parse incoming deep link:", err);
+      }
+    };
+
+    const subscription = Linking.addEventListener("url", handleDeepLink);
+    // Parse the initial URL if the app was opened via a link
+    Linking.getInitialURL().then((url) => {
+      if (url) handleDeepLink({ url });
+    }).catch((err) => console.error("Failed to get initial URL:", err));
+
+    return () => {
+      subscription.remove();
+    };
+  }, []);
 
   useEffect(() => {
     if (onboarded === null || rolePicked === null || initializing) return;
