@@ -264,7 +264,7 @@ function CommitSheet({ drive, onClose }: { drive: Drive | null; onClose: () => v
     if (!valid || busy) return;
     setBusy(true);
     try {
-      await commitToDrive(drive.id, Number(amount), existing?.confirmed ?? false);
+      await commitToDrive(drive.id, Number(amount));
       haptic("success");
       // Gentle local reminder the morning of the pickup (or 3h before if sooner).
       if (!existing) {

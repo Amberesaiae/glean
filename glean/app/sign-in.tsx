@@ -1,4 +1,4 @@
-import { LogIn, Mail, UserPlus } from "lucide-react-native";
+import { LogIn, UserPlus } from "lucide-react-native";
 import React, { useState } from "react";
 import {
   ActivityIndicator,
@@ -16,11 +16,25 @@ import Colors from "@/constants/colors";
 import { Fonts } from "@/constants/fonts";
 import { useAuth } from "@/providers/AuthProvider";
 
-type Mode = "signin" | "signup";
+type Mode = "signin" | "signup" | "forgot";
+
+/** Inline Google 'G' icon rendered as a coloured letter — avoids SVG dependency. */
+function GoogleIcon() {
+  return (
+    <Text style={googleIconStyle}>G</Text>
+  );
+}
+const googleIconStyle = {
+  fontFamily: undefined as undefined,
+  fontSize: 17,
+  fontWeight: "700" as const,
+  color: "#4285F4",
+  lineHeight: 20,
+};
 
 export default function SignInScreen() {
   const insets = useSafeAreaInsets();
-  const { signIn, signUp, signInWithGoogle } = useAuth();
+  const { signIn, signUp, signInWithGoogle, resetPassword } = useAuth();
 
   const [mode, setMode] = useState<Mode>("signin");
   const [name, setName] = useState<string>("");
@@ -32,10 +46,16 @@ export default function SignInScreen() {
   const [notice, setNotice] = useState<string | null>(null);
 
   const isSignup = mode === "signup";
-  const valid =
-    email.trim().length > 3 &&
-    password.length >= 6 &&
-    (!isSignup || name.trim().length > 1);
+  const isForgot = mode === "forgot";
+
+  // Basic email format check (must contain @)
+  const emailValid = email.trim().length > 3 && email.includes("@");
+
+  const valid = isForgot
+    ? emailValid
+    : emailValid &&
+      password.length >= 6 &&
+      (!isSignup || name.trim().length > 1);
 
   const submit = async () => {
     if (!valid || busy) return;
@@ -43,16 +63,22 @@ export default function SignInScreen() {
     setError(null);
     setNotice(null);
     try {
-      if (isSignup) {
+      if (isForgot) {
+        await resetPassword(email);
+        haptic("success");
+        setNotice("Password reset email sent — check your inbox.");
+        setMode("signin");
+      } else if (isSignup) {
         await signUp(email, password, name);
+        haptic("success");
         setNotice(
           "Account created. If asked, confirm your email, then sign in.",
         );
         setMode("signin");
       } else {
         await signIn(email, password);
+        haptic("success");
       }
-      haptic("success");
     } catch (e) {
       haptic("medium");
       setError(e instanceof Error ? e.message : "Something went wrong.");
@@ -75,6 +101,12 @@ export default function SignInScreen() {
     }
   };
 
+  const switchMode = (next: Mode) => {
+    setMode(next);
+    setError(null);
+    setNotice(null);
+  };
+
   return (
     <KeyboardAvoidingView
       style={styles.container}
@@ -94,7 +126,9 @@ export default function SignInScreen() {
           </View>
           <Text style={styles.wordmark}>glean</Text>
           <Text style={styles.tagline}>
-            {isSignup
+            {isForgot
+              ? "Enter your email to reset your password"
+              : isSignup
               ? "Create your account to join the marketplace"
               : "Welcome back — sign in to continue"}
           </Text>
@@ -123,21 +157,31 @@ export default function SignInScreen() {
             autoComplete="email"
           />
 
-          <Label text="Password" />
-          <Input
-            value={password}
-            onChangeText={setPassword}
-            placeholder="At least 6 characters"
-            secureTextEntry
-            autoCapitalize="none"
-          />
+          {!isForgot ? (
+            <>
+              <Label text="Password" />
+              <Input
+                value={password}
+                onChangeText={setPassword}
+                placeholder="At least 6 characters"
+                secureTextEntry
+                autoCapitalize="none"
+              />
+            </>
+          ) : null}
 
           {error ? <Text style={styles.error}>{error}</Text> : null}
           {notice ? <Text style={styles.notice}>{notice}</Text> : null}
 
           <View style={styles.submitWrap}>
             <Button
-              label={isSignup ? "Create account" : "Sign in"}
+              label={
+                isForgot
+                  ? "Send reset email"
+                  : isSignup
+                  ? "Create account"
+                  : "Sign in"
+              }
               onPress={submit}
               disabled={!valid}
               loading={busy}
@@ -145,48 +189,62 @@ export default function SignInScreen() {
               icon={
                 isSignup ? (
                   <UserPlus color={Colors.white} size={18} />
-                ) : (
+                ) : isForgot ? null : (
                   <LogIn color={Colors.white} size={18} />
                 )
               }
             />
           </View>
 
-          <View style={styles.divider}>
-            <View style={styles.dividerLine} />
-            <Text style={styles.dividerText}>or</Text>
-            <View style={styles.dividerLine} />
-          </View>
+          {/* Forgot password link — only shown on sign-in mode */}
+          {!isSignup && !isForgot ? (
+            <PressableScale
+              onPress={() => switchMode("forgot")}
+              style={styles.forgotBtn}
+            >
+              <Text style={styles.forgotText}>Forgot password?</Text>
+            </PressableScale>
+          ) : null}
+
+          {!isForgot ? (
+            <>
+              <View style={styles.divider}>
+                <View style={styles.dividerLine} />
+                <Text style={styles.dividerText}>or</Text>
+                <View style={styles.dividerLine} />
+              </View>
+
+              <PressableScale
+                onPress={google}
+                style={styles.googleBtn}
+                disabled={googleBusy}
+              >
+                {googleBusy ? (
+                  <ActivityIndicator color={Colors.charcoal} />
+                ) : (
+                  <>
+                    <GoogleIcon />
+                    <Text style={styles.googleText}>Continue with Google</Text>
+                  </>
+                )}
+              </PressableScale>
+            </>
+          ) : null}
 
           <PressableScale
-            onPress={google}
-            style={styles.googleBtn}
-            disabled={googleBusy}
-          >
-            {googleBusy ? (
-              <ActivityIndicator color={Colors.charcoal} />
-            ) : (
-              <>
-                <Mail color={Colors.danger} size={18} />
-                <Text style={styles.googleText}>Continue with Google</Text>
-              </>
-            )}
-          </PressableScale>
-
-          <PressableScale
-            onPress={() => {
-              setMode(isSignup ? "signin" : "signup");
-              setError(null);
-              setNotice(null);
-            }}
+            onPress={() =>
+              switchMode(isForgot ? "signin" : isSignup ? "signin" : "signup")
+            }
             style={styles.switchBtn}
           >
             <Text style={styles.switchText}>
-              {isSignup
+              {isForgot
+                ? "Back to "
+                : isSignup
                 ? "Already have an account? "
                 : "New to Glean? "}
               <Text style={styles.switchLink}>
-                {isSignup ? "Sign in" : "Create one"}
+                {isForgot ? "Sign in" : isSignup ? "Sign in" : "Create one"}
               </Text>
             </Text>
           </PressableScale>
@@ -239,6 +297,12 @@ const styles = StyleSheet.create({
     lineHeight: 19,
   },
   submitWrap: { marginTop: 18 },
+  forgotBtn: { alignItems: "center", marginTop: 14, paddingVertical: 4 },
+  forgotText: {
+    fontFamily: Fonts.sansMedium,
+    fontSize: 13.5,
+    color: Colors.sky,
+  },
   divider: {
     flexDirection: "row",
     alignItems: "center",

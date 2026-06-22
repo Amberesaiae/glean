@@ -57,7 +57,7 @@ const headerStyle = {
 } as const;
 
 function NavigationGate() {
-  const { onboarded, rolePicked } = useApp();
+  const { onboarded, rolePicked, me } = useApp();
   const { isAuthenticated, initializing } = useAuth();
   const pathname = usePathname();
 
@@ -79,7 +79,8 @@ function NavigationGate() {
     }
 
     // Signed in but hasn't chosen a role yet — guide them through it once.
-    if (rolePicked === false) {
+    // Cross-check: if they already have a valid role in their DB profile, consider it picked.
+    if (rolePicked === false && !me?.role) {
       if (pathname !== "/role-setup") router.replace("/role-setup");
       return;
     }
@@ -87,7 +88,7 @@ function NavigationGate() {
     if (pathname === "/sign-in" || pathname === "/welcome" || pathname === "/role-setup") {
       router.replace("/(tabs)");
     }
-  }, [onboarded, rolePicked, isAuthenticated, initializing, pathname]);
+  }, [onboarded, rolePicked, me?.role, isAuthenticated, initializing, pathname]);
 
   return null;
 }
@@ -177,6 +178,44 @@ export default function RootLayout() {
     </QueryClientProvider>
   );
 }
+
+import { ErrorBoundaryProps } from "expo-router";
+import { View as RNView, Button as RNButton } from "react-native";
+import { Text as RNText } from "@/components/ui";
+
+export function ErrorBoundary({ error, retry }: ErrorBoundaryProps) {
+  return (
+    <RNView style={fallbackStyles.container}>
+      <RNText style={fallbackStyles.title}>Something went wrong</RNText>
+      <RNText style={fallbackStyles.message}>{error.message}</RNText>
+      <RNButton title="Try Again" onPress={retry} color={Colors.skyDeep} />
+    </RNView>
+  );
+}
+
+const fallbackStyles = StyleSheet.create({
+  container: {
+    flex: 1,
+    backgroundColor: Colors.paper,
+    alignItems: "center",
+    justifyContent: "center",
+    padding: 24,
+  },
+  title: {
+    fontFamily: Fonts.serifBold,
+    fontSize: 22,
+    color: Colors.charcoal,
+    marginBottom: 8,
+  },
+  message: {
+    fontFamily: Fonts.sans,
+    fontSize: 14,
+    color: Colors.slate,
+    textAlign: "center",
+    marginBottom: 20,
+    lineHeight: 20,
+  },
+});
 
 const styles = StyleSheet.create({
   flex1: { flex: 1 },

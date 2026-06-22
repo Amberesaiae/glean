@@ -243,12 +243,16 @@ export const [AppProvider, useApp] = createContextHook(() => {
       .on(
         "postgres_changes",
         { event: "*", schema: "public", table: "messages" },
-        () => invalidate(["conversations"]),
+        () => {
+          queryClient.invalidateQueries({ queryKey: ["conversations"] });
+        },
       )
       .on(
         "postgres_changes",
         { event: "*", schema: "public", table: "conversations" },
-        () => invalidate(["conversations"]),
+        () => {
+          queryClient.invalidateQueries({ queryKey: ["conversations"] });
+        },
       )
       .on(
         "postgres_changes",
@@ -304,6 +308,16 @@ export const [AppProvider, useApp] = createContextHook(() => {
         "postgres_changes",
         { event: "*", schema: "public", table: "hub_follows" },
         () => invalidate(["hubFollows"]),
+      )
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "saved_listings" },
+        () => queryClient.invalidateQueries({ queryKey: ["saved"] }),
+      )
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "saved_posts" },
+        () => queryClient.invalidateQueries({ queryKey: ["saved"] }),
       )
       .subscribe();
 
@@ -443,8 +457,10 @@ export const [AppProvider, useApp] = createContextHook(() => {
       const { data, error } = await supabase
         .from("events")
         .select(
-          "id,title,type,date,region,location,organizer,description,contact,photo,pending,status",
+          "id,title,type,date,region,location,organizer,description,contact,photo,pending,status,author_id",
         )
+        // Show approved events (pending=false) or events owned by the current user.
+        .or(`pending.eq.false,author_id.eq.${userId}`)
         .order("date", { ascending: true });
       if (error) throw error;
       return (data ?? []).map((row): ClimateEvent => ({
@@ -952,8 +968,8 @@ export const [AppProvider, useApp] = createContextHook(() => {
   );
 
   const commitToDrive = useCallback(
-    async (driveId: string, amountKg: number, confirmed: boolean = false) => {
-      await callApi("/drives.commit", { driveId, amountKg, confirmed });
+    async (driveId: string, amountKg: number) => {
+      await callApi("/drives.commit", { driveId, amountKg });
       invalidate(["drives"]);
     },
     [invalidate],
@@ -973,10 +989,17 @@ export const [AppProvider, useApp] = createContextHook(() => {
         withUserId,
         listingId: listingId ?? null,
       });
+      // Seed an empty cache entry optimistically if not already present
+      // to prevent races when sending the first message immediately after creation.
+      queryClient.setQueryData<Conversation[]>(["conversations", userId], (prev) => {
+        if (!prev) return [{ id: data.id, withUserId, listingId, messages: [] }];
+        if (prev.some((c) => c.id === data.id)) return prev;
+        return [{ id: data.id, withUserId, listingId, messages: [] }, ...prev];
+      });
       invalidate(["conversations"]);
       return data.id;
     },
-    [invalidate],
+    [userId, queryClient, invalidate],
   );
 
   const sendMessage = useCallback(
@@ -1041,7 +1064,7 @@ export const [AppProvider, useApp] = createContextHook(() => {
         if (prevSaved) queryClient.setQueryData(["saved", userId], prevSaved);
         throw err;
       } finally {
-        invalidate(["saved"]);
+        queryClient.invalidateQueries({ queryKey: ["saved"] });
       }
     },
     [userId, queryClient, savedListingIds, invalidate],
@@ -1067,7 +1090,7 @@ export const [AppProvider, useApp] = createContextHook(() => {
         if (prevSaved) queryClient.setQueryData(["saved", userId], prevSaved);
         throw err;
       } finally {
-        invalidate(["saved"]);
+        queryClient.invalidateQueries({ queryKey: ["saved"] });
       }
     },
     [userId, queryClient, savedPostIds, invalidate],

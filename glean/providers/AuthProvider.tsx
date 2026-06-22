@@ -27,6 +27,7 @@ function friendlyAuthError(message: string): string {
 export const [AuthProvider, useAuth] = createContextHook(() => {
   const [session, setSession] = useState<Session | null>(null);
   const [initializing, setInitializing] = useState<boolean>(true);
+  const [pendingEmailConfirmation, setPendingEmailConfirmation] = useState<string | null>(null);
 
   useEffect(() => {
     supabase.auth
@@ -35,8 +36,13 @@ export const [AuthProvider, useAuth] = createContextHook(() => {
       .catch(() => setSession(null))
       .finally(() => setInitializing(false));
 
-    const { data: sub } = supabase.auth.onAuthStateChange((_event, next) => {
+    const { data: sub } = supabase.auth.onAuthStateChange((event, next) => {
       setSession(next);
+      // Clear the pending-confirmation state once the user actually signs in
+      // (covers both email-link click and manual sign-in after confirmation).
+      if (event === "SIGNED_IN" && next) {
+        setPendingEmailConfirmation(null);
+      }
     });
     return () => sub.subscription.unsubscribe();
   }, []);
@@ -51,12 +57,17 @@ export const [AuthProvider, useAuth] = createContextHook(() => {
 
   const signUp = useCallback(
     async (email: string, password: string, name: string) => {
-      const { error } = await supabase.auth.signUp({
+      const { data, error } = await supabase.auth.signUp({
         email: email.trim(),
         password,
         options: { data: { name: name.trim() } },
       });
       if (error) throw new Error(friendlyAuthError(error.message));
+      // When Supabase requires email confirmation, the session is null after
+      // signup. Track this so the UI can show a "check your inbox" screen.
+      if (!data.session) {
+        setPendingEmailConfirmation(email.trim());
+      }
     },
     [],
   );
@@ -97,7 +108,16 @@ export const [AuthProvider, useAuth] = createContextHook(() => {
   }, []);
 
   const signOut = useCallback(async () => {
+    setPendingEmailConfirmation(null);
     await supabase.auth.signOut();
+  }, []);
+
+  const resetPassword = useCallback(async (email: string) => {
+    const redirectTo = Linking.createURL("/auth/reset");
+    const { error } = await supabase.auth.resetPasswordForEmail(email.trim(), {
+      redirectTo,
+    });
+    if (error) throw new Error(friendlyAuthError(error.message));
   }, []);
 
   return useMemo(
@@ -109,11 +129,13 @@ export const [AuthProvider, useAuth] = createContextHook(() => {
         (session?.user.user_metadata?.name as string | undefined) ?? null,
       isAuthenticated: !!session,
       initializing,
+      pendingEmailConfirmation,
       signIn,
       signUp,
       signInWithGoogle,
       signOut,
+      resetPassword,
     }),
-    [session, initializing, signIn, signUp, signInWithGoogle, signOut],
+    [session, initializing, pendingEmailConfirmation, signIn, signUp, signInWithGoogle, signOut, resetPassword],
   );
 });

@@ -189,6 +189,12 @@ const routes: Record<string, Handler> = {
 
   "/conversations.read": async (body, { rest, user }) => {
     const conversationId = str(body.conversationId, "Conversation");
+    // Verify the caller is actually a participant in this conversation.
+    const membership = await rest.exists(
+      "conversations",
+      `id=eq.${encodeFilterValue(conversationId)}&or=(user_a.eq.${encodeFilterValue(user.id)},user_b.eq.${encodeFilterValue(user.id)})`,
+    );
+    if (!membership) throw new HttpError(403, "Conversation not found.");
     await rest.insertIdempotent(
       "conversation_reads",
       { conversation_id: conversationId, user_id: user.id, last_read_at: new Date().toISOString() },
@@ -235,9 +241,11 @@ const routes: Record<string, Handler> = {
   "/drives.commit": async (body, { rest, user }) => {
     const driveId = str(body.driveId, "Drive");
     const amountKg = num(body.amountKg, "Amount", { min: 0 });
+    // 'confirmed' is only settable by the drive organizer via a separate endpoint.
+    // Commitments always start unconfirmed regardless of what the client sends.
     await rest.insertIdempotent(
       "drive_commitments",
-      { drive_id: driveId, user_id: user.id, amount_kg: amountKg, confirmed: body.confirmed === true },
+      { drive_id: driveId, user_id: user.id, amount_kg: amountKg, confirmed: false },
       "drive_id,user_id",
     );
     return { ok: true };
@@ -245,7 +253,7 @@ const routes: Record<string, Handler> = {
 
   "/drives.uncommit": async (body, { rest, user }) => {
     const driveId = str(body.driveId, "Drive");
-    await rest.remove("drive_commitments", `drive_id=eq.${driveId}&user_id=eq.${user.id}`);
+    await rest.remove("drive_commitments", `drive_id=eq.${encodeFilterValue(driveId)}&user_id=eq.${encodeFilterValue(user.id)}`);
     return { ok: true };
   },
 

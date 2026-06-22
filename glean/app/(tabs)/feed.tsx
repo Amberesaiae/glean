@@ -6,7 +6,6 @@ import {
   Heart,
   MessageCircle,
   PencilLine,
-  Send,
 } from "lucide-react-native";
 import React, { useCallback, useMemo, useRef, useState } from "react";
 import {
@@ -203,7 +202,6 @@ const PostRow = React.memo(function PostRow({
   const {
     getProfile,
     toggleLike,
-    addComment,
     flagPost,
     savedPostIds,
     toggleSavePost,
@@ -212,9 +210,6 @@ const PostRow = React.memo(function PostRow({
   const isOfficial = !!author?.official;
   const style = author ? officialStyleFor(author.handle) : undefined;
   const isEcoForge = !!style?.isEcoForge;
-
-  const [draft, setDraft] = useState<string>("");
-  const showComments = false;
 
   const openAuthor = useCallback(() => {
     if (isEcoForge) router.push("/ecoforge" as any);
@@ -236,13 +231,6 @@ const PostRow = React.memo(function PostRow({
       </View>
     );
   }
-
-  const submitComment = () => {
-    if (draft.trim().length === 0) return;
-    addComment(post.id, draft.trim());
-    setDraft("");
-    haptic("light");
-  };
 
   return (
     <View style={styles.row}>
@@ -294,15 +282,6 @@ const PostRow = React.memo(function PostRow({
           onToggleComments={openPost}
           onSave={() => toggleSavePost(post.id)}
           onFlag={isOfficial ? undefined : () => flagPost(post.id)}
-        />
-
-        <CommentsSection
-          visible={showComments}
-          comments={post.comments}
-          getProfile={getProfile}
-          draft={draft}
-          onDraftChange={setDraft}
-          onSubmit={submitComment}
         />
       </View>
     </View>
@@ -402,52 +381,6 @@ function PostActions({
   );
 }
 
-function CommentsSection({
-  visible,
-  comments,
-  getProfile,
-  draft,
-  onDraftChange,
-  onSubmit,
-}: {
-  visible: boolean;
-  comments: FeedPost["comments"];
-  getProfile: (id: string) => UserProfile | undefined;
-  draft: string;
-  onDraftChange: (value: string) => void;
-  onSubmit: () => void;
-}) {
-  if (!visible) return null;
-
-  return (
-    <View style={styles.comments}>
-      {comments.map((c) => {
-        const cAuthor = getProfile(c.authorId);
-        return (
-          <View key={c.id} style={styles.comment}>
-            {cAuthor ? <Avatar uri={cAuthor.avatar} size={28} /> : null}
-            <View style={styles.commentBubble}>
-              <Text style={styles.commentName}>{cAuthor?.name}</Text>
-              <Text style={styles.commentText}>{c.text}</Text>
-            </View>
-          </View>
-        );
-      })}
-      <View style={styles.commentInputRow}>
-        <Input
-          value={draft}
-          onChangeText={onDraftChange}
-          placeholder="Add a comment…"
-          placeholderTextColor={Colors.mist}
-          style={styles.commentInput}
-        />
-        <PressableScale onPress={onSubmit} style={styles.sendBtn}>
-          <Send color={Colors.white} size={16} />
-        </PressableScale>
-      </View>
-    </View>
-  );
-}
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: Colors.paper },

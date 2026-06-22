@@ -292,6 +292,7 @@ export function ProfileTabs({
 
 /** Compact row for a have/need listing. */
 export function ListingRow({ listing }: { listing: Listing }) {
+  const showBadge = listing.status && listing.status !== "active";
   return (
     <PressableScale
       onPress={() => router.push(`/listing/${listing.id}`)}
@@ -307,9 +308,16 @@ export function ListingRow({ listing }: { listing: Listing }) {
         ]}
       />
       <View style={styles.flex1}>
-        <Text style={styles.listingTitle} numberOfLines={1}>
-          {listing.title}
-        </Text>
+        <View style={styles.titleRow}>
+          <Text style={styles.listingTitle} numberOfLines={1}>
+            {listing.title}
+          </Text>
+          {showBadge ? (
+            <View style={[styles.statusBadge, listing.status === "fulfilled" ? styles.statusFulfilled : styles.statusDeleted]}>
+              <Text style={styles.statusBadgeText}>{listing.status}</Text>
+            </View>
+          ) : null}
+        </View>
         <Text style={styles.listingMeta}>
           {listing.quantity}
           {listing.unit} · {listing.area} · {timeAgo(listing.createdAt)}
@@ -503,4 +511,23 @@ const styles = StyleSheet.create({
   },
   flex1: { flex: 1 },
   emptyArtMuted: { opacity: 0.9 },
+  titleRow: { flexDirection: "row", alignItems: "center", gap: 8 },
+  statusBadge: {
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 6,
+    alignSelf: "flex-start",
+  },
+  statusFulfilled: {
+    backgroundColor: Colors.successSoft,
+  },
+  statusDeleted: {
+    backgroundColor: Colors.dangerSoft || "#fee2e2",
+  },
+  statusBadgeText: {
+    fontFamily: Fonts.monoBold,
+    fontSize: 9.5,
+    textTransform: "uppercase",
+    color: Colors.slate,
+  },
 });
